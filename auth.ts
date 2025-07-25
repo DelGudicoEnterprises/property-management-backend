@@ -20,22 +20,31 @@ router.post(
       if (!user) return res.status(401).json({ message: 'Invalid credentials' });
       const match = await bcrypt.compare(password, user.passwordHash);
       if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+      
       const payload = { sub: user.id, role: user.role };
-      const token = jwt.sign(payload, process.env.JWT_SECRET!, {
+      const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
         expiresIn: '7d'
       });
-      res.json({
-        accessToken: token,
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role,
-        },
+      const refreshToken = jwt.sign(payload, process.env.JWT_SECRET!, {
+        expiresIn: '7d'
       });
-    } catch (error) {
-      next(error);
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          accessToken, 
+          refreshToken, 
+          user: { 
+            id: user.id, 
+            email: user.email, 
+            firstName: user.firstName, 
+            lastName: user.lastName, 
+            role: user.role 
+          } 
+        } 
+      });
+    } catch (err) {
+      next(err);
     }
   }
 );
@@ -55,9 +64,23 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: any, next: any) 
       },
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json(user);
+    res.json({ success: true, data: user });
   } catch (error) {
     next(error);
+  }
+});
+
+// POST /api/auth/refresh
+router.post('/refresh', body('refreshToken').isString(), validateRequest, (req, res) => {
+  const { refreshToken } = req.body;
+  try {
+    const payload: any = jwt.verify(refreshToken, process.env.JWT_SECRET!);
+    const newAccessToken = jwt.sign({ sub: payload.sub, role: payload.role }, process.env.JWT_SECRET!, {
+      expiresIn: '7d'
+    });
+    res.json({ success: true, data: { accessToken: newAccessToken } });
+  } catch {
+    return res.status(401).json({ message: 'Invalid refresh token' });
   }
 });
 
